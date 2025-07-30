@@ -546,8 +546,8 @@ _ebpf_sock_addr_context_destroy(
     _Out_writes_bytes_to_(*context_size_out, *context_size_out) uint8_t* context_out,
     _Inout_ size_t* context_size_out);
 
-_Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts
-                                   .lock) static void _net_ebpf_ext_purge_connect_contexts(bool delete_all);
+_Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts.lock) static void _net_ebpf_ext_purge_connect_contexts(
+    bool delete_all);
 
 //
 // SOCK_ADDR Program Information NPI Provider.
@@ -871,8 +871,7 @@ _net_ebpf_ext_uninitialize_connection_contexts()
 }
 
 _Function_class_(RTL_AVL_COMPARE_ROUTINE) static RTL_GENERIC_COMPARE_RESULTS
-    _net_ebpf_sock_addr_context_avl_compare_routine(
-        _In_ RTL_AVL_TABLE* table, _In_ PVOID first, _In_ PVOID second)
+    _net_ebpf_sock_addr_context_avl_compare_routine(_In_ RTL_AVL_TABLE* table, _In_ PVOID first, _In_ PVOID second)
 {
     UNREFERENCED_PARAMETER(table);
 
@@ -989,10 +988,8 @@ _net_ebpf_extension_connection_context_initialize(
     }
 }
 
-_Requires_exclusive_lock_held_(
-    _net_ebpf_ext_sock_addr_contexts
-        .lock) static uint32_t _net_ebpf_ext_find_and_remove_connection_context_locked(_In_ net_ebpf_extension_connection_context_t*
-                                                                                       context)
+_Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts.lock) static uint32_t
+    _net_ebpf_ext_find_and_remove_connection_context_locked(_In_ net_ebpf_extension_connection_context_t* context)
 {
     uint32_t verdict = BPF_SOCK_ADDR_VERDICT_PROCEED;
     // Check the hash table for the entry.
@@ -1004,8 +1001,7 @@ _Requires_exclusive_lock_held_(
         RemoveEntryList(&found_context->list_entry);
         uint64_t transport_endpoint_handle = found_context->transport_endpoint_handle;
         // Delete should succeed as the entry was just found in the lookup.
-        BOOLEAN result =
-            RtlDeleteElementGenericTableAvl(&_net_ebpf_ext_sock_addr_contexts.context_table, context);
+        BOOLEAN result = RtlDeleteElementGenericTableAvl(&_net_ebpf_ext_sock_addr_contexts.context_table, context);
         ebpf_assert(result);
         _net_ebpf_ext_sock_addr_contexts.context_count--;
         NET_EBPF_EXT_LOG_MESSAGE_UINT64(
@@ -1027,8 +1023,7 @@ _Requires_exclusive_lock_held_(
                 verdict = connection_context->verdict;
                 RemoveEntryList(&connection_context->list_entry);
                 InsertHeadList(
-                    &_net_ebpf_ext_sock_addr_contexts.low_memory_free_context_list,
-                    &connection_context->list_entry);
+                    &_net_ebpf_ext_sock_addr_contexts.low_memory_free_context_list, &connection_context->list_entry);
                 _net_ebpf_ext_sock_addr_contexts.low_memory_context_count--;
                 break;
             }
@@ -1056,8 +1051,8 @@ _net_ebpf_ext_find_and_remove_connection_context(
     return verdict;
 }
 
-_Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts
-                                   .lock) static void _net_ebpf_ext_purge_connect_contexts(bool delete_all)
+_Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts.lock) static void _net_ebpf_ext_purge_connect_contexts(
+    bool delete_all)
 {
     uint64_t expiry_time = CONVERT_100NS_UNITS_TO_MS(KeQueryInterruptTime()) - EXPIRY_TIME;
 
@@ -1076,8 +1071,7 @@ _Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts
 #pragma warning(suppress : 6001) /* entry and list entry are non-null */
         RemoveEntryList(&entry->list_entry);
         uint64_t transport_endpoint_handle = entry->transport_endpoint_handle;
-        BOOLEAN result =
-            RtlDeleteElementGenericTableAvl(&_net_ebpf_ext_sock_addr_contexts.context_table, entry);
+        BOOLEAN result = RtlDeleteElementGenericTableAvl(&_net_ebpf_ext_sock_addr_contexts.context_table, entry);
         ebpf_assert(result);
         entry = NULL;
         _net_ebpf_ext_sock_addr_contexts.context_count--;
@@ -1120,9 +1114,7 @@ _Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts
 
 _Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts.lock) static ebpf_result_t
     _net_ebpf_ext_insert_connection_context_to_low_memory_list(
-        _In_ uint64_t transport_endpoint_handle,
-        _In_ const bpf_sock_addr_t* sock_addr_ctx,
-        _In_ uint32_t verdict)
+        _In_ uint64_t transport_endpoint_handle, _In_ const bpf_sock_addr_t* sock_addr_ctx, _In_ uint32_t verdict)
 {
     ebpf_result_t result = EBPF_SUCCESS;
     PLIST_ENTRY entry = NULL;
@@ -1145,9 +1137,7 @@ _Requires_exclusive_lock_held_(_net_ebpf_ext_sock_addr_contexts.lock) static ebp
         connection_context);
 
     // Insert into the blocked context list.
-    InsertHeadList(
-        &_net_ebpf_ext_sock_addr_contexts.low_memory_context_list,
-        &connection_context->list_entry);
+    InsertHeadList(&_net_ebpf_ext_sock_addr_contexts.low_memory_context_list, &connection_context->list_entry);
     _net_ebpf_ext_sock_addr_contexts.low_memory_context_count++;
     InterlockedIncrement(&_net_ebpf_ext_statistics.low_memory_context_count);
 
@@ -1178,10 +1168,7 @@ _net_ebpf_ext_insert_connection_context_to_list(
 
     // Insert into table.
     new_context = (net_ebpf_extension_connection_context_t*)RtlInsertElementGenericTableAvl(
-        &_net_ebpf_ext_sock_addr_contexts.context_table,
-        &connection_context,
-        sizeof(connection_context),
-        NULL);
+        &_net_ebpf_ext_sock_addr_contexts.context_table, &connection_context, sizeof(connection_context), NULL);
     NET_EBPF_EXT_BAIL_ON_ALLOC_FAILURE_RESULT(
         NET_EBPF_EXT_TRACELOG_KEYWORD_SOCK_ADDR, new_context, "connection", result);
 
@@ -1190,11 +1177,15 @@ _net_ebpf_ext_insert_connection_context_to_list(
     InsertHeadList(&_net_ebpf_ext_sock_addr_contexts.context_lru_list, &new_context->list_entry);
     _net_ebpf_ext_sock_addr_contexts.context_count++;
 
-    if (verdict == FWP_ACTION_CONTINUE) {
+    switch (verdict) {
+    case BPF_SOCK_ADDR_VERDICT_CONTINUE:
         InterlockedIncrement(&_net_ebpf_ext_statistics.continue_connection_count);
-    }
-    else if (verdict == FWP_ACTION_BLOCK) {
+        break;
+    case BPF_SOCK_ADDR_VERDICT_REJECT:
         InterlockedIncrement(&_net_ebpf_ext_statistics.block_connection_count);
+        break;
+    default:
+        break;
     }
 
     NET_EBPF_EXT_LOG_MESSAGE_UINT64(
@@ -1206,7 +1197,8 @@ _net_ebpf_ext_insert_connection_context_to_list(
 Exit:
     if (result != EBPF_SUCCESS) {
         // If any failure occurred, attempt to use low memory list instead.
-        result = _net_ebpf_ext_insert_connection_context_to_low_memory_list(transport_endpoint_handle, sock_addr_ctx, verdict);
+        result = _net_ebpf_ext_insert_connection_context_to_low_memory_list(
+            transport_endpoint_handle, sock_addr_ctx, verdict);
     }
 
     // Purge stale entries from the list.
@@ -1730,10 +1722,13 @@ Exit:
         break;
     }
 
+    /*
     // Clear FWPS_RIGHT_ACTION_WRITE for block action.
     if (classify_output->actionType == FWP_ACTION_BLOCK) {
         classify_output->rights &= ~FWPS_RIGHT_ACTION_WRITE;
-    }
+    }*/
+
+    classify_output->rights &= ~FWPS_RIGHT_ACTION_WRITE;
 
     _net_ebpf_ext_log_sock_addr_classify(
         "auth_classify",

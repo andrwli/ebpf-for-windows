@@ -135,9 +135,19 @@ EBPF_HELPER(int, bpf_sock_addr_set_redirect_context, (bpf_sock_addr_t * ctx, voi
  *  \ref EBPF_ATTACH_TYPE_CGROUP_INET6_RECV_ACCEPT
  *
  * @param[in] context \ref bpf_sock_addr_t
- * @retval BPF_SOCK_ADDR_VERDICT_PROCEED Allow the socket operation.
+ * @retval BPF_SOCK_ADDR_VERDICT_PROCEED Allow the socket operation. Subsequent eBPF programs can veto this decision
+ * by blocking the socket operation.
  * @retval BPF_SOCK_ADDR_VERDICT_REJECT Block the socket operation.
- * @retval BPF_SOCK_ADDR_VERDICT_CONTINUE Defer the verdict of the socket operation.
+ *
+ * For EBPF_ATTACH_TYPE_CGROUP_INET{4|6}_CONNECT, this return value is also supported:
+ *
+ * @retval BPF_SOCK_ADDR_VERDICT_CONTINUE Explicitly defer the verdict of the socket operation.
+ *
+ * @remarks BPF_SOCK_ADDR_VERDICT_CONTINUE behaves like BPF_SOCK_ADDR_VERDICT_PROCEED in that subsequent eBPF programs
+ * are invoked. However, the key difference is that it results in FWP_ACTION_CONTINUE instead of FWP_ACTION_PERMIT from
+ * the WFP callout. This distinction is important when a default WFP filter is attached to the
+ * FWPM_LAYER_ALE_AUTH_CONNECT_V{4|6} layers. FWP_ACTION_CONTINUE means that the default filter is matched and
+ * evaluated, whereas FWP_ACTION_PERMIT terminates further evaluation.
  *
  * Any other return value other than the ones mentioned above is treated as BPF_SOCK_ADDR_VERDICT_REJECT.
  */

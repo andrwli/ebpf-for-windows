@@ -28,6 +28,8 @@ typedef enum _sock_addr_test_action
 {
     SOCK_ADDR_TEST_ACTION_PERMIT,
     SOCK_ADDR_TEST_ACTION_BLOCK,
+    SOCK_ADDR_TEST_ACTION_CONTINUE,
+    // SOCK_ADDR_TEST_ACTION_PERMIT_TERMINATING,
     SOCK_ADDR_TEST_ACTION_REDIRECT,
     SOCK_ADDR_TEST_ACTION_FAILURE,
     SOCK_ADDR_TEST_ACTION_ROUND_ROBIN
@@ -446,6 +448,10 @@ _get_fwp_sock_addr_action(uint16_t destination_port)
         return FWP_ACTION_PERMIT;
     }
 
+    if (action == SOCK_ADDR_TEST_ACTION_CONTINUE) {
+        return FWP_ACTION_CONTINUE;
+    }
+
     return FWP_ACTION_BLOCK;
 }
 
@@ -478,7 +484,7 @@ netebpfext_unit_invoke_sock_addr_program(
         REQUIRE(sock_addr_context->user_ip4 == htonl(0x01020304));
         REQUIRE(sock_addr_context->msg_src_ip4 == htonl(0x05060708));
         REQUIRE(sock_addr_context->protocol == IPPROTO_TCP);
-        REQUIRE(sock_addr_context->user_port == htons(1234));
+        REQUIRE(sock_addr_context->user_port == htons(1235));
         REQUIRE(sock_addr_context->msg_src_port == htons(5678));
     } else {
         ASSERT((sock_addr_context->family == AF_INET || sock_addr_context->family == AF_INET6));
@@ -504,6 +510,9 @@ netebpfext_unit_invoke_sock_addr_program(
         break;
     case SOCK_ADDR_TEST_ACTION_BLOCK:
         *result = BPF_SOCK_ADDR_VERDICT_REJECT;
+        break;
+    case SOCK_ADDR_TEST_ACTION_CONTINUE:
+        *result = BPF_SOCK_ADDR_VERDICT_CONTINUE;
         break;
     case SOCK_ADDR_TEST_ACTION_REDIRECT:
         sock_addr_context->user_port++;
@@ -572,6 +581,15 @@ TEST_CASE("sock_addr_invoke", "[netebpfext]")
     result = helper.test_cgroup_inet6_connect(&parameters);
     REQUIRE(result == FWP_ACTION_BLOCK);
 
+    // Classify operations that should return continue
+    client_context->sock_addr_action = SOCK_ADDR_TEST_ACTION_CONTINUE;
+
+    result = helper.test_cgroup_inet4_connect(&parameters);
+    REQUIRE(result == FWP_ACTION_CONTINUE);
+
+    result = helper.test_cgroup_inet6_connect(&parameters);
+    REQUIRE(result == FWP_ACTION_CONTINUE);
+
     // Classify operations for redirect.
     client_context->sock_addr_action = SOCK_ADDR_TEST_ACTION_REDIRECT;
 
@@ -626,6 +644,8 @@ sock_addr_thread_function(
     uint16_t end_port,
     std::atomic<size_t>* failure_count)
 {
+    printf("starT_port %i, end_port %i\n", start_port, end_port);
+
     FWP_ACTION_TYPE result;
     uint16_t port_number;
 
@@ -636,6 +656,8 @@ sock_addr_thread_function(
     } else {
         port_number = htons(parameters->destination_port);
     }
+
+    printf("afterport %i\n", port_number);
 
     while (!token.stop_requested()) {
         // If start_port and end_port are same, then the port number for each
@@ -659,6 +681,13 @@ sock_addr_thread_function(
         }
 
         auto expected_result = _get_fwp_sock_addr_action(port_number);
+
+        // FWP_ACTION_CONTINUE currently isn't supported in receive, map to block
+        if (type == SOCK_ADDR_TEST_TYPE_RECV_ACCEPT && expected_result == FWP_ACTION_CONTINUE) {
+            expected_result = FWP_ACTION_BLOCK;
+        }
+
+        printf("expected result %i, result %i, port %i\n", expected_result, result, port_number);
         if (result != expected_result) {
             if (fault_injection_enabled) {
                 // If fault injection is enabled, then the result can be different.
